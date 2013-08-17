@@ -16,6 +16,7 @@ var lib = {
     exec:   require('child_process').exec
 };
 
+var stats   = require('characterize');
 var async   = require('async');
 var glob    = require('glob');
 
@@ -179,7 +180,7 @@ function testComboUrls (results, callback) {
                 console.log('[testComboUrls]', 'Success: ' + transactions.success.length);
                 console.log('[testComboUrls]', 'Failure: ' + transactions.failure.length);
 
-                return callback();
+                return callback(null, transactions);
             }
         }).on('error', function (err) {
             console.error(err);
@@ -188,11 +189,23 @@ function testComboUrls (results, callback) {
     });
 }
 
+function descriptiveStatistics (results, callback) {
+    var latency = [];
+    results.success.forEach(function (transaction) {
+        latency.push(transaction.res.latency);
+    });
+
+    console.log(
+        stats(latency)
+    );
+}
+
 async.waterfall([
     getModules,
 //    getComboUrls,
     getRandomComboUrls,
-    testComboUrls
+    testComboUrls,
+    descriptiveStatistics
 ], function (err) {
     if (err) {
         console.error(err);
