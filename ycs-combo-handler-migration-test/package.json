@@ -1,0 +1,11 @@
+{
+  "name": "ycs-combo-handler-migration-test",
+  "version": "0.0.0",
+  "description": "Test the migrated YCS combo handler",
+  "main": "index.js",
+  "author": "Eugene Kashida",
+  "dependencies": {
+    "async": "~0.2.9",
+    "glob": "~3.2.3"
+  }
+}
