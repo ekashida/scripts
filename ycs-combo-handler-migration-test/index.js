@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-var NUM_MODULES = 3;
+var NUM_MODULES_PER_URL = 2;
+var NUM_URLS = 3;
 
 var FORMAT_TO_APPEND = {
     debug: '-debug',
@@ -28,6 +29,7 @@ function formatComboPath (name, config) {
 
 // Inspects the build.json files in a yui3 repo to get all module names.
 function getModules (callback) {
+    console.log('getModules...');
     var seen    = {},
         jsMods  = [],
         cssMods = [];
@@ -65,6 +67,7 @@ function getModules (callback) {
 }
 
 function getComboUrls (results, callback) {
+    console.log('getComboUrls...');
     results.combo = [];
 
     ['js', 'css'].forEach(function (type) {
@@ -102,24 +105,30 @@ function getComboUrls (results, callback) {
 }
 
 function getRandomComboUrls (results, callback) {
+    console.log('getRandomComboUrls...');
     var modules = results.js,
         combos  = [],
         paths   = [],
         randomIndex,
-        i;
+        i,
+        j;
 
-    for (i = 0; i < NUM_MODULES; i += 1) {
-        randomIndex = Math.floor((Math.random() * 100)) % modules.length;
-        paths.push(formatComboPath(modules[randomIndex], {
-            includeBuildDir: false,
-            type: 'js',
-            format: 'raw',
-            version: '3.10.0'
-        }));
+    for (i = 0; i < NUM_URLS; i += 1) {
+        for (j = 0; j < NUM_MODULES_PER_URL; j += 1) {
+            randomIndex = Math.floor((Math.random() * 100)) % modules.length;
+            paths.push(formatComboPath(modules[randomIndex], {
+                includeBuildDir: false,
+                type: 'js',
+                format: 'raw',
+                version: '3.10.0'
+            }));
+        }
+
+        combos.push('http://yui.yahooapis.com/combo?' + paths.join('&'));
+        combos.push('http://c3.ycs.gq1.yahoo.com/combo?' + paths.join('&'));
+
+        paths = [];
     }
-
-    combos.push('http://yui.yahooapis.com/combo?' + paths.join('&'));
-    combos.push('http://c3.ycs.gq1.yahoo.com/combo?' + paths.join('&'));
 
     callback(null, {
         combo: combos
@@ -127,19 +136,13 @@ function getRandomComboUrls (results, callback) {
 }
 
 function testComboUrls (results, callback) {
+    console.log('testComboUrls...');
     var transactions    = { success: [], failure: [] },
-        urls            = [],
         total,
         start,
-        end,
-        len,
-        i;
+        end;
 
-    for (i = 0, len = 3; i < len; i += 1) {
-        urls = [].concat(urls, results.combo);
-    }
-
-    urls.forEach(function (combo) {
+    results.combo.forEach(function (combo) {
         var options = lib.url.parse(combo);
 
         // Slower, but we don't have to worry about connection pooling.
@@ -169,12 +172,12 @@ function testComboUrls (results, callback) {
             }
 
             total = transactions.success.length + transactions.failure.length;
-            if (total === urls.length) {
+            if (total === results.combo.length) {
+                console.log(JSON.stringify(transactions, null, 4));
+
                 console.log('[testComboUrls]', 'Total:' + total);
                 console.log('[testComboUrls]', 'Success: ' + transactions.success.length);
                 console.log('[testComboUrls]', 'Failure: ' + transactions.failure.length);
-
-                console.log(JSON.stringify(transactions, null, 4));
 
                 return callback();
             }
