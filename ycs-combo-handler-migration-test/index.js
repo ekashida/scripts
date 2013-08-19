@@ -16,7 +16,7 @@ var lib = {
     exec:   require('child_process').exec
 };
 
-var stats   = require('characterize');
+var Stats   = require('fast-stats').Stats;
 var async   = require('async');
 var glob    = require('glob');
 
@@ -69,7 +69,7 @@ function getModules (callback) {
 
 function getComboUrls (results, callback) {
     console.log('getComboUrls...');
-    results.combo = [];
+    results.combos = [];
 
     ['js', 'css'].forEach(function (type) {
         var modules = results[type],
@@ -86,14 +86,14 @@ function getComboUrls (results, callback) {
             }));
         }
 
-        results.combo.push({
+        results.combos.push({
             host: 'yui.yahooapis.com',
             url: 'http://yui.yahooapis.com/combo?' + paths.join('&'),
             type: type,
             format: 'raw',
             paths: paths.slice(0)
         });
-        results.combo.push({
+        results.combos.push({
             host: 'c3.ycs.gq1.yahoo.com',
             url: 'http://c3.ycs.gq1.yahoo.com/combo?' + paths.join('&'),
             type: type,
@@ -132,72 +132,93 @@ function getRandomComboUrls (results, callback) {
     }
 
     callback(null, {
-        combo: combos
+        combos: combos
     });
 }
 
 function testComboUrls (results, callback) {
     console.log('testComboUrls...');
-    var transactions    = { success: [], failure: [] },
-        total,
-        start,
-        end;
+    var transactions = { success: [], failure: [] },
+        jobs = [],
+        total;
 
-    results.combo.forEach(function (combo) {
-        var options = lib.url.parse(combo);
+    results.combos.forEach(function (combo) {
+        jobs.push(function (cb) {
+            var options = lib.url.parse(combo),
+                start,
+                end;
 
-        // Slower, but we don't have to worry about connection pooling.
-        options.agent = false;
+            // Slower, but we don't have to worry about connection pooling.
+            options.agent = false;
 
-        options.headers = {
-            Host: 'yui.yahooapis.com'
-        };
-
-        start = new Date();
-        lib.http.get(options, function (res) {
-            end = new Date();
-
-            var data = {
-                req: options,
-                res: {
-                    status: res.statusCode,
-                    latency: end - start,
-                    headers: res.headers
-                }
+            options.headers = {
+                Host: 'yui.yahooapis.com'
             };
 
-            if (res.statusCode === 200) {
-                transactions.success.push(data);
-            } else {
-                transactions.failure.push(data);
-            }
+            start = new Date();
+            lib.http.get(options, function (res) {
+                end = new Date();
 
-            total = transactions.success.length + transactions.failure.length;
-            if (total === results.combo.length) {
-                console.log(JSON.stringify(transactions, null, 4));
+                var data = {
+                    req: options,
+                    res: {
+                        status: res.statusCode,
+                        latency: end - start,
+                        headers: res.headers
+                    }
+                };
 
-                console.log('[testComboUrls]', 'Total:' + total);
-                console.log('[testComboUrls]', 'Success: ' + transactions.success.length);
-                console.log('[testComboUrls]', 'Failure: ' + transactions.failure.length);
+                if (res.statusCode === 200) {
+                    transactions.success.push(data);
+                } else {
+                    transactions.failure.push(data);
+                }
 
-                return callback(null, transactions);
-            }
-        }).on('error', function (err) {
-            console.error(err);
-            return callback(err);
+                console.log('[testComboUrls]', new Date().getTime(), res.statusCode);
+
+                cb();
+            }).on('error', function (err) {
+                console.error(err);
+                return cb(err);
+            });
         });
+    });
+
+    async.series(jobs, function () {
+        var success = transactions.success,
+            failure = transactions.failure,
+            total   = success.length + failure.length;
+
+        if (total === results.combos.length) {
+            console.log(JSON.stringify(transactions, null, 4));
+
+            console.log('[testComboUrls]', 'Total:' + transactions.success.length + transactions.failure.length);
+            console.log('[testComboUrls]', 'Success: ' + transactions.success.length);
+            console.log('[testComboUrls]', 'Failure: ' + transactions.failure.length);
+
+            return callback(null, transactions);
+        }
     });
 }
 
 function descriptiveStatistics (results, callback) {
-    var latency = [];
+    var latency = [],
+        stats;
+
     results.success.forEach(function (transaction) {
-        latency.push(transaction.res.latency);
+        if (transaction.req.host === 'c3.ycs.gq1.yahoo.com') {
+            latency.push(transaction.res.latency);
+        }
     });
 
-    console.log(
-        stats(latency)
-    );
+    stats = new Stats({ bucket_precision: 100 }).push(latency);
+    console.log('[testComboUrls]', JSON.stringify({
+        geometric_mean: stats.gmean(),
+        median: stats.median(),
+        distribution: stats.distribution()
+    }, null, 4));
+
+    callback();
 }
 
 async.waterfall([
