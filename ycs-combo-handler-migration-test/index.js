@@ -1,7 +1,14 @@
 #!/usr/bin/env node
 
-var NUM_MODULES_PER_URL = 2;
-var NUM_URLS = 3;
+var nopt = require('nopt'),
+    knownOpts = {
+        urls: Number,
+        modules: Number
+    },
+    shortHands = {},
+    parsed = nopt(knownOpts, shortHands, process.argv, 2),
+    NUM_MODULES_PER_URL = parsed.modules || 3,
+    NUM_URLS = parsed.urls || 50;
 
 var FORMAT_TO_APPEND = {
     debug: '-debug',
@@ -201,32 +208,35 @@ function testComboUrls (results, callback) {
     });
 }
 
-function descriptiveStatistics (results, callback) {
-    var latency = [],
-        stats;
+function getStatistics (results, callback) {
+    var hosts   = {},
+        stats,
+        host;
 
     results.success.forEach(function (transaction) {
-        if (transaction.req.host === 'c3.ycs.gq1.yahoo.com') {
-            latency.push(transaction.res.latency);
-        }
+        var host = transaction.req.host;
+        hosts[host] = hosts[host] || [];
+        hosts[host].push(transaction.res.latency);
     });
 
-    stats = new Stats({ bucket_precision: 100 }).push(latency);
-    console.log('[testComboUrls]', JSON.stringify({
-        geometric_mean: stats.gmean(),
-        median: stats.median(),
-        distribution: stats.distribution()
-    }, null, 4));
+    for (host in hosts) {
+        stats = new Stats({ bucket_precision: 25 }).push(hosts[host]);
+
+        console.log('[testComboUrls]', host, JSON.stringify({
+            geometric_mean: stats.gmean(),
+            median: stats.median(),
+            distribution: stats.distribution()
+        }, null, 4));
+    }
 
     callback();
 }
 
 async.waterfall([
     getModules,
-//    getComboUrls,
     getRandomComboUrls,
     testComboUrls,
-    descriptiveStatistics
+    getStatistics
 ], function (err) {
     if (err) {
         console.error(err);
